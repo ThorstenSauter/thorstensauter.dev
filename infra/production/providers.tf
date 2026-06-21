@@ -6,3 +6,6 @@ provider "azurerm" {
     }
   }
 }
+
+provider "cloudflare" {}
+

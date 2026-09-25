@@ -11,6 +11,11 @@ permissions:
   contents: read
   id-token: write
 
+# Shared with every job that touches the production Terraform state, so runs never contend for the state lock.
+concurrency:
+  group: terraform-state-production
+  cancel-in-progress: false
+
 jobs:
   apply-production:
     name: Apply production environment
@@ -43,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
+      APP_DIR: "src"
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
@@ -77,5 +83,5 @@ jobs:
           azure_static_web_apps_api_token: ${{ steps.token-retrieval.outputs.deployment-token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
-          app_location: "/src"
+          app_location: ${{ env.APP_DIR }}
           skip_app_build: true

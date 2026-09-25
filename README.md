@@ -1,4 +1,4 @@
-﻿# thorstensauter.dev
+# thorstensauter.dev
 
 ## Overview
 

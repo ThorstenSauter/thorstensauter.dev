@@ -1,0 +1,9 @@
+{
+  "routes": [
+    {
+      "route": "/*",
+      "redirect": "https://github.com/ThorstenSauter",
+      "statusCode": 301
+    }
+  ]
+}

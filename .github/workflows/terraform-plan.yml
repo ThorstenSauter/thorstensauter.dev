@@ -31,9 +31,6 @@ jobs:
     name: Plan production environment
     runs-on: ubuntu-latest
     environment: production
-    concurrency:
-      group: terraform-state-production
-      cancel-in-progress: false
     env:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}

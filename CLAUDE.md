@@ -37,7 +37,7 @@ Providers are `azurerm ~> 5.6`, `cloudflare ~> 5.25`, and `time`, and Terraform 
   - `terraform-plan.yml`: validate plus a production plan.
   - `build.yml`: runs a refresh-only apply to read the token, then uploads `src/` to a Static Web Apps preview environment. When the PR closes, it tears down the preview environment.
 - **Release published** (or manual dispatch) runs `deploy-production.yml`: a full `terraform apply`, then uploads `src/` to production.
-- Every job that touches the production state shares the `terraform-state-production` concurrency group with `cancel-in-progress: false`. `deploy-production.yml` sets the group at the workflow level; the other workflows set it per job. Add the group to any new job that runs Terraform against production.
+- `deploy-production.yml` runs in the `terraform-state-production` concurrency group (workflow level, `cancel-in-progress: false`), so deploys run one at a time and are never cancelled. PR jobs (`terraform-plan.yml`, `build.yml`) stay out of that group on purpose: a third queued job in a group cancels the pending one, which could drop a deployment. They wait on the state lock instead (`lock-timeout`, 10m in the `terraform-actions` steps and on the raw `terraform apply -refresh-only` calls), so pass `-lock-timeout` to any new raw Terraform command.
 - The refresh-only apply before `terraform output` is intentional: it pulls the current deployment token from Azure in case it was rotated.
 - Terraform steps use the composite actions from `ThorstenSauter/terraform-actions` (init, validate, plan, apply). Actions are pinned by commit SHA with a version comment.
 

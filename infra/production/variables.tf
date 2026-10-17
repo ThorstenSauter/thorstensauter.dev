@@ -3,11 +3,6 @@ variable "app_name" {
   description = "The application name used in created resource names."
 }
 
-variable "primary_custom_domain_name" {
-  type        = string
-  description = "The primary custom domain name for the ingress and the managed certificate."
-}
-
 variable "env" {
   type        = string
   description = "The shorthand name of the environment the infrastructure is deployed to."
@@ -21,11 +16,6 @@ variable "location" {
 variable "resource_id" {
   type        = string
   description = "The id appended to resource names in order to make them unique."
-}
-
-variable "secondary_custom_domain_name" {
-  type        = string
-  description = "The secondary custom domain name for the ingress and the managed certificate."
 }
 
 variable "sku" {

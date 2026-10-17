@@ -15,21 +15,13 @@ Personal website for thorstensauter.dev. Right now the site is only a redirect t
 
 ## Infrastructure architecture
 
-`infra/production/main.tf` provisions:
-- An Azure resource group and an Azure Static Web App (Free SKU by default). `repository_branch` and `repository_url` are in `ignore_changes` because deployments come from GitHub Actions, not a linked repo.
-- Two custom domains on the Static Web App:
-  - The apex `thorstensauter.dev` is validated with `dns-txt-token`.
-  - `www.thorstensauter.dev` is validated with `cname-delegation`.
-- Cloudflare DNS records in the existing `thorstensauter.dev` zone (looked up via a data source):
-  - The TXT validation record.
-  - A CNAME at the apex, which Cloudflare flattens.
-  - A CNAME for `www`.
-  - All records use `proxied = false`.
-- A `time_sleep` of 120s, so the `www` cname-delegation validation runs only after DNS has propagated. Keep this ordering when you touch domain resources.
+`infra/production/main.tf` creates the resource group and calls the shared module [`ThorstenSauter/cloudflare-azure-static-web-app`](https://github.com/ThorstenSauter/cloudflare-azure-static-web-app) (pinned with `?ref=X.Y.Z`, bumped by Renovate). The module owns the Azure Static Web App (Free SKU by default, `repository_*` ignored because CI deploys the content), the Cloudflare DNS records (DNS-only, zone looked up by `cloudflare_zone_name`) and both custom domains: the apex with `dns-txt-token` validation and a CNAME Cloudflare flattens, and `www` with `cname-delegation` after a 120s propagation wait. Change domain or DNS behaviour in the module, not here. Resource names follow `<type>-${app_name}-${env}-${resource_id}`.
 
-The `deployment_token` output is the Static Web App's API key. CI reads it with `terraform output -raw deployment_token` to deploy the site, so do not remove or rename it.
+`moved.tf` maps the resources this repo used to define directly onto the module's addresses. Don't delete it, and don't rename the module call (`module.static_web_app`): either would make Terraform recreate the Static Web App and its custom domains.
 
-Providers are `azurerm ~> 5.6`, `cloudflare ~> 5.25`, and `time`, and Terraform must be `>= 1.9`. The state backend is `azurerm` with an empty block. Backend settings come from CI variables: resource group, storage account, container, and state file. Locally they would go in a `*.conf` backend config file, which `infra/.gitignore` ignores. Auth uses Azure AD/OIDC (`ARM_USE_OIDC`, `storage_use_azuread`) plus `CLOUDFLARE_API_TOKEN`.
+The `deployment_token` output is the Static Web App's API key. CI reads it with `terraform output -raw deployment_token` to deploy the site, so don't remove or rename it.
+
+Provider versions (`azurerm`, `cloudflare`, `time`) are pinned in `terraform.tf` and bumped by Renovate; the module only sets lower bounds.
 
 ## CI/CD flow
 

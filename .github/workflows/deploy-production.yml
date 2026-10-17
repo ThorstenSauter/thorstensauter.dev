@@ -11,7 +11,9 @@ permissions:
   contents: read
   id-token: write
 
-# Shared with every job that touches the production Terraform state, so runs never contend for the state lock.
+# Never cancelled: stopping a terraform apply part way can leave the state locked. PR jobs stay
+# out of this group on purpose and wait on the state lock (lock-timeout) instead: a third queued
+# job in a shared group would cancel a pending deployment.
 concurrency:
   group: terraform-state-production
   cancel-in-progress: false
@@ -67,7 +69,7 @@ jobs:
           state-file: ${{ vars.TF_BACKEND_STATE_FILE_NAME }}
       - name: Terraform apply refresh only
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: terraform apply -refresh-only -auto-approve -input=false
+        run: terraform apply -refresh-only -auto-approve -input=false -lock-timeout=10m
       - name: Retrieve deployment token
         id: token-retrieval
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}

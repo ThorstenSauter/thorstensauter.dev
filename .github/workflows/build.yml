@@ -16,9 +16,6 @@ jobs:
     name: "Build website and deploy preview environment"
     runs-on: ubuntu-latest
     environment: production
-    concurrency:
-      group: terraform-state-production
-      cancel-in-progress: false
     env:
       APP_DIR: "src"
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
@@ -41,7 +38,7 @@ jobs:
           state-file: ${{ vars.TF_BACKEND_STATE_FILE_NAME }}
       - name: Terraform apply refresh only
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: terraform apply -refresh-only -auto-approve -input=false
+        run: terraform apply -refresh-only -auto-approve -input=false -lock-timeout=10m
       - name: Retrieve deployment token
         id: token-retrieval
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
@@ -63,9 +60,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     environment: production
-    concurrency:
-      group: terraform-state-production
-      cancel-in-progress: false
     env:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -86,7 +80,7 @@ jobs:
           state-file: ${{ vars.TF_BACKEND_STATE_FILE_NAME }}
       - name: Terraform apply refresh only
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: terraform apply -refresh-only -auto-approve -input=false
+        run: terraform apply -refresh-only -auto-approve -input=false -lock-timeout=10m
       - name: Retrieve deployment token
         id: token-retrieval
         working-directory: ${{ vars.TF_WORKING_DIRECTORY }}

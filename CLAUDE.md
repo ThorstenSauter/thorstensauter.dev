@@ -26,11 +26,10 @@ Provider versions (`azurerm`, `cloudflare`, `time`) are pinned in `terraform.tf`
 ## CI/CD flow
 
 - **PR to main** runs two workflows:
-  - `terraform-plan.yml`: validate plus a production plan.
-  - `build.yml`: runs a refresh-only apply to read the token, then uploads `src/` to a Static Web Apps preview environment. When the PR closes, it tears down the preview environment.
+  - `terraform-plan.yml`: validate plus a production plan, run in the `plan-production` environment with read-only credentials (a Reader managed identity and a Zone:Read/DNS:Read Cloudflare token). `production`, with write access, is restricted to `main` and release tags and used only by the deploy.
+  - `build.yml`: uploads `src/` to a Static Web Apps preview environment, using the deployment token stored as `AZURE_STATIC_WEB_APPS_API_TOKEN` in the `preview` GitHub environment (no Azure or Cloudflare credentials). When the PR closes, it tears down the preview environment. If the deployment token is rotated, update that secret.
 - **Release published** (or manual dispatch) runs `deploy-production.yml`: a full `terraform apply`, then uploads `src/` to production.
-- `deploy-production.yml` runs in the `terraform-state-production` concurrency group (workflow level, `cancel-in-progress: false`), so deploys run one at a time and are never cancelled. PR jobs (`terraform-plan.yml`, `build.yml`) stay out of that group on purpose: a third queued job in a group cancels the pending one, which could drop a deployment. They wait on the state lock instead (`lock-timeout`, 10m in the `terraform-actions` steps and on the raw `terraform apply -refresh-only` calls), so pass `-lock-timeout` to any new raw Terraform command.
-- The refresh-only apply before `terraform output` is intentional: it pulls the current deployment token from Azure in case it was rotated.
+- `deploy-production.yml` runs in the `terraform-state-production` concurrency group (workflow level, `cancel-in-progress: false`), so deploys run one at a time and are never cancelled. PR jobs (`terraform-plan.yml`) stay out of that group on purpose: a third queued job in a group cancels the pending one, which could drop a deployment. They wait on the state lock instead (`lock-timeout`, 10m in the `terraform-actions` steps), so pass `-lock-timeout` to any new raw Terraform command.
 - Terraform steps use the composite actions from `ThorstenSauter/terraform-actions` (init, validate, plan, apply). Actions are pinned by commit SHA with a version comment.
 
 ## Commands

@@ -8,48 +8,29 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  pull-requests: write
 
 jobs:
   build:
     name: "Build website and deploy preview environment"
     runs-on: ubuntu-latest
-    environment: production
+    # The preview environment holds only the Static Web App deployment token. Pull request code
+    # gets no Azure or Cloudflare credentials.
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write # the deploy action comments the preview URL on the PR
     env:
       APP_DIR: "src"
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_USE_AZUREAD: true
-      ARM_USE_OIDC: true
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Terraform init
-        uses: ThorstenSauter/terraform-actions/init@f4c5a856f2401bb96f67794d5761482fd759ed24 # v1.9.0
         with:
-          infra-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-          resource-group: ${{ vars.TF_BACKEND_RESOURCE_GROUP_NAME }}
-          storage-account: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT_NAME }}
-          container: ${{ vars.TF_BACKEND_STATE_CONTAINER_NAME }}
-          state-file: ${{ vars.TF_BACKEND_STATE_FILE_NAME }}
-      - name: Terraform apply refresh only
-        working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: terraform apply -refresh-only -auto-approve -input=false -lock-timeout=10m
-      - name: Retrieve deployment token
-        id: token-retrieval
-        working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: |
-          token=$(terraform output -raw deployment_token)
-          echo "::add-mask::$token"
-          echo "deployment-token=$token" >> "$GITHUB_OUTPUT"
+          persist-credentials: false
       - name: Deploy to Azure Static Web Apps
         uses: azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
-          azure_static_web_apps_api_token: ${{ steps.token-retrieval.outputs.deployment-token }}
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           app_location: ${{ env.APP_DIR }}
@@ -59,37 +40,10 @@ jobs:
     name: Close Pull Request Job
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    environment: production
-    env:
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_USE_AZUREAD: true
-      ARM_USE_OIDC: true
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    environment: preview
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Terraform init
-        uses: ThorstenSauter/terraform-actions/init@f4c5a856f2401bb96f67794d5761482fd759ed24 # v1.9.0
-        with:
-          infra-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-          resource-group: ${{ vars.TF_BACKEND_RESOURCE_GROUP_NAME }}
-          storage-account: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT_NAME }}
-          container: ${{ vars.TF_BACKEND_STATE_CONTAINER_NAME }}
-          state-file: ${{ vars.TF_BACKEND_STATE_FILE_NAME }}
-      - name: Terraform apply refresh only
-        working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: terraform apply -refresh-only -auto-approve -input=false -lock-timeout=10m
-      - name: Retrieve deployment token
-        id: token-retrieval
-        working-directory: ${{ vars.TF_WORKING_DIRECTORY }}
-        run: |
-          token=$(terraform output -raw deployment_token)
-          echo "::add-mask::$token"
-          echo "deployment-token=$token" >> "$GITHUB_OUTPUT"
       - name: Close Pull Request
         uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
         with:
-          azure_static_web_apps_api_token: ${{ steps.token-retrieval.outputs.deployment-token }}
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: "close"

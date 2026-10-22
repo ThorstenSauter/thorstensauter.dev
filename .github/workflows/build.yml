@@ -12,7 +12,8 @@ permissions:
 jobs:
   build:
     name: "Build website and deploy preview environment"
-    runs-on: ubuntu-latest
+    # x64: Azure/static-web-apps-deploy runs in an x64-only Docker image.
+    runs-on: ubuntu-26.04
     # The preview environment holds only the Static Web App deployment token. Pull request code
     # gets no Azure or Cloudflare credentials.
     environment: preview
@@ -38,7 +39,8 @@ jobs:
 
   close_pull_request_job:
     name: Close Pull Request Job
-    runs-on: ubuntu-latest
+    # x64: Azure/static-web-apps-deploy runs in an x64-only Docker image.
+    runs-on: ubuntu-26.04
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     environment: preview
     steps:

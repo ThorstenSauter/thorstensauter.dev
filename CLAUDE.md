@@ -4,14 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Personal website for thorstensauter.dev. Right now the site is only a redirect to the GitHub profile. `src/staticwebapp.config.json` sends every path there with a 301 (the same pattern as the `westphalia-kn.de` repo). `src/index.html` is a meta-refresh fallback, and the Static Web Apps deploy action requires it, so don't delete it. The plan is to grow it into a full personal website. There is no app build step: `src/` is uploaded as-is to Azure Static Web Apps (`skip_app_build: true`).
+Personal website for thorstensauter.dev. Right now the site is only a redirect to the GitHub profile. `src/staticwebapp.config.json` sends every path there with a 301 (the same pattern as the `westphalia-kn.de` repo). `src/index.html` is a meta-refresh fallback, and the Static Web Apps deployment requires it, so don't delete it. The plan is to grow it into a full personal website. There is no app build step: `src/` is uploaded as-is to Azure Static Web Apps with the Static Web Apps CLI pinned in `tools/swa-cli`.
 
 ## Layout
 
 - `src/`: static site content, deployed as-is.
 - `infra/production/`: Terraform root module for the single (production) environment.
 - `infra/.tflint.hcl`: TFLint config with the azurerm ruleset.
-- `.github/workflows/`: CI/CD. Renovate (`.github/renovate.json`, which extends `ThorstenSauter/renovate-config`) opens most commits as dependency bumps for Terraform providers, TFLint plugins, and pinned action SHAs.
+- `tools/swa-cli/`: the pinned Static Web Apps CLI (with its `package-lock.json`) that both workflows deploy with.
+- `.github/workflows/`: CI/CD. Renovate (`.github/renovate.json`, which extends `ThorstenSauter/renovate-config`) opens most commits as dependency bumps for Terraform providers, TFLint plugins, the Static Web Apps CLI and action tags.
 
 ## Infrastructure architecture
 
@@ -27,10 +28,10 @@ Provider versions (`azurerm`, `cloudflare`, `time`) are pinned in `terraform.tf`
 
 - **PR to main** runs two workflows:
   - `terraform-plan.yml`: validate plus a production plan, run in the `plan-production` environment with read-only credentials (a Reader managed identity and a Zone:Read/DNS:Read Cloudflare token). `production`, with write access, is restricted to `main` and release tags and used only by the deploy.
-  - `build.yml`: uploads `src/` to a Static Web Apps preview environment, using the deployment token stored as `AZURE_STATIC_WEB_APPS_API_TOKEN` in the `preview` GitHub environment (no Azure or Cloudflare credentials). When the PR closes, it tears down the preview environment. If the deployment token is rotated, update that secret.
+  - `build.yml`: uploads `src/` to a Static Web Apps preview environment named after the PR number (`swa deploy src --env <number>`) and comments its URL on the PR, using the deployment token stored as `AZURE_STATIC_WEB_APPS_API_TOKEN` in the `preview` GitHub environment (no Azure or Cloudflare credentials). When the PR closes, it tears down the preview environment. The CLI can't do that, so the job runs the CLI's `StaticSitesClient` binary itself with `DEPLOYMENT_ACTION=close`, which is what the old `Azure/static-web-apps-deploy` action's `close` did. It gets the binary through the CLI's internal `getDeployClientPath()`, so check that step after a CLI major update. If the deployment token is rotated, update that secret.
 - **Release published** (or manual dispatch) runs `deploy-production.yml`: a full `terraform apply`, then uploads `src/` to production.
 - `deploy-production.yml` runs in the `terraform-state-production` concurrency group (workflow level, `cancel-in-progress: false`), so deploys run one at a time and are never cancelled. PR jobs (`terraform-plan.yml`) stay out of that group on purpose: a third queued job in a group cancels the pending one, which could drop a deployment. They wait on the state lock instead (`lock-timeout`, 10m in the `terraform-actions` steps), so pass `-lock-timeout` to any new raw Terraform command.
-- Terraform steps use the composite actions from `ThorstenSauter/terraform-actions` (init, validate, plan, apply). Actions are pinned by commit SHA with a version comment.
+- Terraform steps use the composite actions from `ThorstenSauter/terraform-actions` (init, validate, plan, apply). Actions are referenced by full version tag and `.github/workflows/actions.lock` locks the commits; after changing a `uses:` line by hand, run `gh actions-lock` and commit the lockfile.
 
 ## Commands
 

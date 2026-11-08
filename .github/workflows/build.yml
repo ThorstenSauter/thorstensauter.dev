@@ -12,40 +12,90 @@ permissions:
 jobs:
   build:
     name: "Build website and deploy preview environment"
-    # x64: Azure/static-web-apps-deploy runs in an x64-only Docker image.
+    # x64: the Static Web Apps CLI has no arm64 build (Azure/static-web-apps-cli#987).
     runs-on: ubuntu-26.04
     # The preview environment holds only the Static Web App deployment token. Pull request code
     # gets no Azure or Cloudflare credentials.
     environment: preview
     permissions:
       contents: read
-      pull-requests: write # the deploy action comments the preview URL on the PR
+      pull-requests: write # comment the preview URL on the PR
     env:
       APP_DIR: "src"
+      PR_NUMBER: ${{ github.event.pull_request.number }}
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - name: Deploy to Azure Static Web Apps
-        uses: azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+      # Pinned in tools/swa-cli. Install scripts stay off: the only package that has one is keytar, an
+      # optional credential store the token-based deploy never loads.
+      - name: Install the Static Web Apps CLI
+        run: npm ci --prefix tools/swa-cli --ignore-scripts --no-audit --no-fund
+      # One preview environment per pull request, named after its number like the
+      # Azure/static-web-apps-deploy action named them.
+      - name: Deploy to the preview environment
+        id: deploy
+        env:
+          SWA_CLI_DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        run: |
+          npm exec --prefix tools/swa-cli --no -- swa deploy "$APP_DIR" --env "$PR_NUMBER" | tee "$RUNNER_TEMP/swa-deploy.log"
+          url=$(grep -oE 'https://[^ ]+\.azurestaticapps\.net' "$RUNNER_TEMP/swa-deploy.log" | tail -n 1)
+          if [ -z "$url" ]; then
+            echo "::error::The Static Web Apps CLI did not report a preview URL."
+            exit 1
+          fi
+          echo "preview_url=$url" >> "$GITHUB_OUTPUT"
+      - name: Post or update the preview comment
+        uses: actions/github-script@v9.0.0
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.preview_url }}
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: ${{ env.APP_DIR }}
-          skip_app_build: true
+          script: |
+            const marker = '<!-- preview-url -->';
+            const body = `${marker}\nPreview: ${process.env.PREVIEW_URL}`;
+            const { owner, repo } = context.repo;
+            const issue_number = Number(process.env.PR_NUMBER);
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.body?.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
 
   close_pull_request_job:
     name: Close Pull Request Job
-    # x64: Azure/static-web-apps-deploy runs in an x64-only Docker image.
+    # x64: StaticSitesClient has no arm64 build (Azure/static-web-apps-cli#987).
     runs-on: ubuntu-26.04
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     environment: preview
     steps:
-      - name: Close Pull Request
-        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: "close"
+          persist-credentials: false
+      - name: Install the Static Web Apps CLI
+        run: npm ci --prefix tools/swa-cli --ignore-scripts --no-audit --no-fund
+      # The CLI only uploads, but the StaticSitesClient binary it deploys with also closes environments,
+      # which is what Azure/static-web-apps-deploy's "close" action ran. getDeployClientPath() downloads
+      # the binary the pinned CLI uses and checks its hash. It logs to stdout, so the path goes through
+      # $GITHUB_OUTPUT.
+      - name: Get StaticSitesClient
+        id: client
+        run: |
+          node --input-type=module -e "
+            import { appendFileSync } from 'node:fs';
+            const { getDeployClientPath } = await import('./tools/swa-cli/node_modules/@azure/static-web-apps-cli/dist/core/deploy-client.js');
+            const { binary } = await getDeployClientPath();
+            appendFileSync(process.env.GITHUB_OUTPUT, 'binary=' + binary + '\n');
+          "
+      - name: Close the preview environment
+        env:
+          BINARY: ${{ steps.client.outputs.binary }}
+          DEPLOYMENT_ACTION: close
+          DEPLOYMENT_PROVIDER: SwaCli
+          DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          DEPLOYMENT_ENVIRONMENT: ${{ github.event.pull_request.number }}
+        run: '"$BINARY"'

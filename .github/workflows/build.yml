@@ -40,8 +40,9 @@ jobs:
         env:
           SWA_CLI_DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
         run: |
-          npm exec --prefix tools/swa-cli --no -- swa deploy "$APP_DIR" --env "$PR_NUMBER" | tee "$RUNNER_TEMP/swa-deploy.log"
-          url=$(grep -oE 'https://[^ ]+\.azurestaticapps\.net' "$RUNNER_TEMP/swa-deploy.log" | tail -n 1)
+          # The CLI prints the deployed URL on stderr, with colour codes around it.
+          npm exec --prefix tools/swa-cli --no -- swa deploy "$APP_DIR" --env "$PR_NUMBER" 2>&1 | tee "$RUNNER_TEMP/swa-deploy.log"
+          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.azurestaticapps\.net' "$RUNNER_TEMP/swa-deploy.log" | tail -n 1)
           if [ -z "$url" ]; then
             echo "::error::The Static Web Apps CLI did not report a preview URL."
             exit 1

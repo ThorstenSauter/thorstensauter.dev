@@ -92,11 +92,13 @@ jobs:
             const { binary } = await getDeployClientPath();
             appendFileSync(process.env.GITHUB_OUTPUT, 'binary=' + binary + '\n');
           "
+      # Runs the binary the way the action's entrypoint did (`StaticSitesClient close`, inputs as
+      # INPUT_* variables): it then reads the pull request from $GITHUB_EVENT_PATH and closes the
+      # environment named after its number. In the CLI's mode (DEPLOYMENT_PROVIDER=SwaCli) close
+      # has no pull request ID and Azure rejects it.
       - name: Close the preview environment
         env:
           BINARY: ${{ steps.client.outputs.binary }}
-          DEPLOYMENT_ACTION: close
-          DEPLOYMENT_PROVIDER: SwaCli
-          DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          DEPLOYMENT_ENVIRONMENT: ${{ github.event.pull_request.number }}
-        run: '"$BINARY"'
+          INPUT_ACTION: close
+          INPUT_AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        run: '"$BINARY" close'
